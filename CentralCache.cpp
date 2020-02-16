@@ -25,17 +25,54 @@ Span* CentralCache::GetOneSpan(size_t size) {
     size_t numpage = SizeClass::NumMovePage(size);
     Span* span = pageCacheInst.NewSpan(numpage);
 
+    // 把span对象分裂成对应大小挂到span的freelist中
+    char* start = (char*)(span->m_pageid << 12);
+    char* end = start + (span->m_pagesize << 12);
+    while (start < end){
+        char* obj = start;
+        start += size;
+
+        span->m_freeList.Push(obj);
+    }
+    span->m_objSize = size;
+    spanlist.PushFront(span);
+
     return span;
 }
 
-
-
 // 从中心缓存central cache获取一定数量的对象给thread cach
 size_t CentralCache::FetchRangeObj(void*& start, void*& end, size_t num, size_t size) {
+    /* 加锁 */
+
     Span* span = GetOneSpan(size);
     FreeList& freelist = span->m_freeList;
     size_t actualNum = freelist.PopRange(start, end, num);
     span->m_usecount += actualNum; // 获取到多少, usecount计数就增加多少
 
     return actualNum;
+}
+
+// 释放list到page cache
+void CentralCache::ReleaseListToSpans(void *start) {
+    /* 加锁 */
+
+    while (start){
+        void* next = NextObj(start);
+        PAGE_ID id = (PAGE_ID)start >> PAGE_SHIFT;
+        Span* span = pageCacheInst.GetIdToSpan(id);
+        span->m_freeList.Push(start);
+        span->m_usecount--;
+
+        // 表示当前span切出去的对象全部返回, 可以将span还给page cache进行合并, 减少内存碎片
+        if (span->m_usecount == 0){
+            size_t index = SizeClass::ListIndex(span->m_objSize);
+            m_spanLists[index].Erase(span);
+            span->m_freeList.Clear();
+
+            pageCacheInst.ReleaseSpanToPageCache(span);
+        }
+
+        start = next;
+    }
+    // 解锁
 }
