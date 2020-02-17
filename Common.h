@@ -5,9 +5,15 @@
 #define CPLUSPLUS_COMMON_H
 
 #include <iostream>
-#include <assert.h>
+#include <cassert>
+#include <map>
+
+#ifdef _WIN32
 #include <windows.h>
-using namespace std;
+#endif // _WIN32
+
+using std::cout;
+using std::endl;
 
 const size_t MAX_SIZE = 64 * 1024;
 const size_t NFREE_LIST = MAX_SIZE / 8;
@@ -22,22 +28,25 @@ inline void*& NextObj(void* obj){
 class FreeList{
 private:
     void* m_freeList = nullptr;
+    size_t m_num = 0;
 
 public:
     void Push(void* obj){ // 头插
         NextObj(obj) = m_freeList;
         m_freeList = obj;
+        ++m_num;
     }
 
-    void PushRange(void* start, void* end){
+    void PushRange(void* start, void* end, size_t num){
         NextObj(end) = m_freeList;
         m_freeList = start;
+        m_num += num;
     }
 
     void* Pop(){ // 头删
         void* obj = m_freeList;
         m_freeList = NextObj(obj);
-
+        --m_num;
         return obj;
     }
 
@@ -55,11 +64,22 @@ public:
         end = prev;
         m_freeList = cur;
 
+        m_num -= actualNum;
+
         return actualNum;
+    }
+
+    size_t Num(){
+        return m_num;
     }
 
     bool Empty(){
         return m_freeList == nullptr;
+    }
+
+    void Clear(){
+        m_freeList = nullptr;
+        m_num = 0;
     }
 };
 
@@ -155,15 +175,17 @@ typedef unsigned int PAGE_ID;
 typedef unsigned long long PAPAGE_ID ;
 #endif // _WIN32
 
+// span : 管理页为单位的对象, 本质是方便做合并, 解决内存碎片问题
 struct Span{
-    PAGE_ID m_pageid; // 页号
-    int m_pagesize; // 页的数量
+    PAGE_ID m_pageid = 0; // 页号
+    PAGE_ID m_pagesize = 0; // 页的数量
 
     FreeList m_freeList; // 对象自由链表
+    size_t m_objSize = 0; // 自由链表对象的大小
     int m_usecount; // 内存块对象使用计数
 
-    Span* m_next;
-    Span* m_prev;
+    Span* m_next = nullptr;
+    Span* m_prev = nullptr;
 };
 
 class SpanList{
@@ -224,6 +246,15 @@ public:
         return Begin() == End();
     }
 
+    /*
+    void Lock(){
+        m_mtx.lock();
+    }
+
+    void Unlock(){
+        m_mtx.unlock();
+    }
+    */
 };
 
 inline static void* SystemAlloc(size_t numPage){
@@ -236,7 +267,14 @@ inline static void* SystemAlloc(size_t numPage){
     if (ptr == nullptr){
         throw std::bad_alloc();
     }
-
     return ptr;
 }
+
+inline static void SystemFree(void* ptr){
+#ifdef _WIN32
+    VirtualFree(ptr, 0, MEM_RELEASE);
+#else
+#endif
+}
+
 #endif //CPLUSPLUS_COMMON_H

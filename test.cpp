@@ -6,7 +6,7 @@
 
 void UniThreadCache(){
     ThreadCache tc;
-    vector<void*> v;
+    std::vector<void*> v;
 
     for (size_t i = 0; i < 22; ++i){
         v.push_back(tc.Allocte(7));
@@ -79,6 +79,14 @@ int main(){
     // UniThreadCache();
     // UnitTestSizeClass();
     UnitTestSystemAlloc();
+
+//    void* ptr1 = ConcurrentMalloc(1<<PAGE_SHIFT);
+//    void* ptr2 = ConcurrentMalloc(65 << PAGE_SHIFT);
+//    void* ptr3 = ConcurrentMalloc(129 << PAGE_SHIFT);
+//
+//    ConcurrentFree(ptr1);
+//    ConcurrentFree(ptr2);
+//    ConcurrentFree(ptr3);
 
     return 0;
 }
