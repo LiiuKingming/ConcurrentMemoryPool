@@ -20,6 +20,9 @@ public:
 
     //从中心缓存获取对象
     void* FetchFromCentralCache(size_t index);
+
+    // 如果自由链表中对象超过一定长度就要释放给中心缓存
+    void ListTooLong(FreeList& freeList, size_t num);
 };
 
 #endif //CPLUSPLUS_THREADCACHE_H
