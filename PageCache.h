@@ -10,10 +10,12 @@
 
 class PageCache{
     SpanList m_spanList[MAX_PAGES];
-public:
-    //
-    Span* NewSpan(size_t numpage);
+    std::map<PAGE_ID, Span*> m_idSpanmap;
 
+public:
+    Span* NewSpan(size_t numpage);
+    void ReleaseSpanToPageCache(Span* span);
+    Span* GetIdToSpan(PAGE_ID id);
 };
 
 static PageCache pageCacheInst;
