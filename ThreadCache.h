@@ -1,5 +1,5 @@
 //
-// Created by 28943 on 2020/2/20.
+// Created by 28943 on 2020/1/9.
 //
 #ifndef CPLUSPLUS_THREADCACHE_H
 #define CPLUSPLUS_THREADCACHE_H
@@ -22,7 +22,11 @@ public:
     void* FetchFromCentralCache(size_t index);
 
     // 如果自由链表中对象超过一定长度就要释放给中心缓存
-    void ListTooLong(FreeList& freeList, size_t num);
+    void ListTooLong(FreeList& freeList, size_t num, size_t size);
 };
+
+// 线程TLS Thread Local Storage
+// pthread_key_t static (ThreadCache*) pThreaCache = nullptr;
+static __thread ThreadCache* pThreaCache = nullptr;
 
 #endif //CPLUSPLUS_THREADCACHE_H

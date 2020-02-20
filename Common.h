@@ -1,5 +1,5 @@
 //
-// Created by 28943 on 2020/2/20.
+// Created by 28943 on 2020/1/9.
 //
 #ifndef CPLUSPLUS_COMMON_H
 #define CPLUSPLUS_COMMON_H
@@ -7,6 +7,10 @@
 #include <iostream>
 #include <cassert>
 #include <map>
+#include <unordered_map>
+#include <thread>
+#include <mutex>
+#include "ObjectPool.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -18,10 +22,10 @@ using std::endl;
 const size_t MAX_SIZE = 64 * 1024;
 const size_t NFREE_LIST = MAX_SIZE / 8;
 const size_t MAX_PAGES = 129;
-const size_t PAGE_SHIFT = 12; // 4kä¸ºé¡µä½ç§»
+const size_t PAGE_SHIFT = 12; // 4kÎªÒ³Î»ÒÆ
 
 inline void*& NextObj(void* obj){
-    // é€šè¿‡å¼ºè½¬æŒ‡é’ˆç±»åž‹è¿”å›žå¤´éƒ¨4/8ä¸ªå­—èŠ‚å³å­˜å‚¨çš„ä¸‹ä¸€å†…å­˜å—çš„åœ°å€
+    // Í¨¹ýÇ¿×ªÖ¸ÕëÀàÐÍ·µ»ØÍ·²¿4/8¸ö×Ö½Ú¼´´æ´¢µÄÏÂÒ»ÄÚ´æ¿éµÄµØÖ·
     return *((void**)obj);
 }
 
@@ -31,26 +35,26 @@ private:
     size_t m_num = 0;
 
 public:
-    void Push(void* obj){ // å¤´æ’
+    void Push(void* obj){ // Í·²å
         NextObj(obj) = m_freeList;
         m_freeList = obj;
         ++m_num;
     }
 
-    void PushRange(void* start, void* end, size_t num){
-        NextObj(end) = m_freeList;
-        m_freeList = start;
-        m_num += num;
-    }
-
-    void* Pop(){ // å¤´åˆ 
-        void* obj = m_freeList;
+    void* Pop() { // Í·É¾
+        void *obj = m_freeList;
         m_freeList = NextObj(obj);
         --m_num;
         return obj;
     }
 
-    size_t PopRange(void* start, void* end, size_t num){
+    void PushRange(void* head, void* tail, size_t num){
+        NextObj(tail) = m_freeList;
+        m_freeList = head;
+        m_num += num;
+    }
+
+    size_t PopRange(void*& start, void*& end, size_t num){
         size_t actualNum = 0;
         void* prev = nullptr;
         void* cur = m_freeList;
@@ -85,18 +89,18 @@ public:
 
 class SizeClass{
 public:
-    // æŽ§åˆ¶[1%, 10%]å·¦å³çš„å†…å­˜ç¢Žç‰‡æµªè´¹
-    // [1, 128] 8byteå¯¹é½ freelist[0, 16)
-    // [129, 1024] 16byteå¯¹é½ freelist[16, 72)
-    // [1025, 8*1024] 128byteå¯¹é½ freelist[72, 128)
-    // [8*1204 + 1, 64*1024] 1024byteå¯¹é½ freelist[128, 184)
-    static size_t m_RoundUp(size_t size, int alignment){
+    // ¿ØÖÆ[1%, 10%]×óÓÒµÄÄÚ´æËéÆ¬ÀË·Ñ
+    // [1, 128] 8byte¶ÔÆë freelist[0, 16)
+    // [129, 1024] 16byte¶ÔÆë freelist[16, 72)
+    // [1025, 8*1024] 128byte¶ÔÆë freelist[72, 128)
+    // [8*1204 + 1, 64*1024] 1024byte¶ÔÆë freelist[128, 184)
+    static size_t m_RoundUp(size_t size, size_t alignment){
         return (size + alignment - 1)&(~(alignment - 1));
     }
 
     // [9-16] + 7 = [16-23] -> 16 8 4 2 1
     // [17-32] + 15 = [32,47] ->32 16 8 4 2 1
-    static size_t RoundUp(size_t size){
+    static inline size_t RoundUp(size_t size){
         assert(size <= MAX_SIZE);
 
         if (size <= 128){
@@ -113,14 +117,14 @@ public:
     }
 
     // [9, 16] + 7  -> [16, 23]
-    static size_t m_ListIndex(size_t size, int alignShift){
+    static size_t m_ListIndex(size_t size, size_t alignShift){
         return ((size + (1 << alignShift) - 1) >> alignShift) - 1;
     }
 
     static size_t ListIndex(size_t size){
         assert(size <= MAX_SIZE);
 
-        // æ¯ä¸ªåŒºé—´æœ‰å¤šå°‘ä¸ªé“¾
+        // Ã¿¸öÇø¼äÓÐ¶àÉÙ¸öÁ´
         static int s_groupArray[4] = {16, 56, 56, 56};
 
         if(size <= 128){
@@ -138,7 +142,7 @@ public:
         return -1;
     }
 
-    // tcæ‰¾ccè¦page
+    // tcÕÒccÒªpage
     static size_t NumMoveSize(size_t size){
         if(size == 0){
             return 0;
@@ -148,7 +152,7 @@ public:
         if(num < 2){
             num = 2;
         }
-        // æœ€å°æƒ…å†µç”³è¯·8byteæ°å¥½ç”³è¯·4k
+        // ×îÐ¡Çé¿öÉêÇë8byteÇ¡ºÃÉêÇë4k
         if(num > 512){
             return 512;
         }
@@ -160,7 +164,7 @@ public:
         size_t num = NumMoveSize(size);
         size_t npage = num * size;
 
-        npage >>= 12; // ç›¸å½“äºŽnpage / 4k
+        npage >>= 12; // Ïàµ±ÓÚnpage / 4k
         if(npage == 0){
             npage = 1;
         }
@@ -175,14 +179,14 @@ typedef unsigned int PAGE_ID;
 typedef unsigned long long PAPAGE_ID ;
 #endif // _WIN32
 
-// span : ç®¡ç†é¡µä¸ºå•ä½çš„å¯¹è±¡, æœ¬è´¨æ˜¯æ–¹ä¾¿åšåˆå¹¶, è§£å†³å†…å­˜ç¢Žç‰‡é—®é¢˜
+// span : ¹ÜÀíÒ³Îªµ¥Î»µÄ¶ÔÏó, ±¾ÖÊÊÇ·½±ã×öºÏ²¢, ½â¾öÄÚ´æËéÆ¬ÎÊÌâ
 struct Span{
-    PAGE_ID m_pageid = 0; // é¡µå·
-    PAGE_ID m_pagesize = 0; // é¡µçš„æ•°é‡
+    PAGE_ID m_pageid = 0; // Ò³ºÅ
+    PAGE_ID m_pagesize = 0; // Ò³µÄÊýÁ¿
 
-    FreeList m_freeList; // å¯¹è±¡è‡ªç”±é“¾è¡¨
-    size_t m_objSize = 0; // è‡ªç”±é“¾è¡¨å¯¹è±¡çš„å¤§å°
-    int m_usecount; // å†…å­˜å—å¯¹è±¡ä½¿ç”¨è®¡æ•°
+    FreeList m_freeList; // ¶ÔÏó×ÔÓÉÁ´±í
+    size_t m_objSize = 0; // ×ÔÓÉÁ´±í¶ÔÏóµÄ´óÐ¡
+    int m_usecount = 0; // ÄÚ´æ¿é¶ÔÏóÊ¹ÓÃ¼ÆÊý
 
     Span* m_next = nullptr;
     Span* m_prev = nullptr;
@@ -190,11 +194,12 @@ struct Span{
 
 class SpanList{
     Span* m_head;
+    std::mutex m_mtx;
 
 public:
     SpanList(){
-        m_head = new Span;
-        m_head->m_next= m_head;
+        m_head = new Span; // Ìæ»»³É¶ÔÏó³Ø
+        m_head->m_next = m_head;
         m_head->m_prev = m_head;
     }
 
@@ -222,7 +227,7 @@ public:
         Erase(m_head->m_prev);
     }
 
-    void Insert(Span* pos, Span* newspan){
+    static void Insert(Span* pos, Span* newspan){
         Span* prev = pos->m_prev;
 
         // prev newspan pos
@@ -246,7 +251,6 @@ public:
         return Begin() == End();
     }
 
-    /*
     void Lock(){
         m_mtx.lock();
     }
@@ -254,12 +258,12 @@ public:
     void Unlock(){
         m_mtx.unlock();
     }
-    */
+
 };
 
 inline static void* SystemAlloc(size_t numPage){
 #ifdef _WIN32
-    void* ptr = VirtualAlloc(nullptr, numPage * (1 << PAGE_SHIFT),
+    void* ptr = VirtualAlloc(0, numPage * (1 << PAGE_SHIFT),
             MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 #else
     // brk mmap

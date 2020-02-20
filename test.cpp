@@ -3,6 +3,7 @@
 //
 #include "ThreadCache.h"
 #include <vector>
+#include "ConcurrentMalloc.h"
 
 void UniThreadCache(){
     ThreadCache tc;
@@ -75,18 +76,91 @@ void UnitTestSystemAlloc()
     PAGE_ID id3 = (PAGE_ID)obj3 >> PAGE_SHIFT;
 }
 
+void UnitThreadCache2()
+{
+    ThreadCache tc;
+    std::vector<void*> v;
+    size_t size = 7;
+    for (size_t i = 0; i < SizeClass::NumMoveSize(size); ++i)
+    {
+        v.push_back(tc.Allocte(size));
+    }
+
+    v.push_back(tc.Allocte(size));
+
+    for (size_t i = 0; i < v.size(); ++i)
+    {
+        printf("[%d]->%p\n", i, v[i]);
+    }
+
+    for (auto ptr : v)
+    {
+        tc.Deallocte(ptr, 7);
+    }
+
+    v.clear();
+
+    v.push_back(tc.Allocte(size));
+}
+
+void func2(size_t n)
+{
+    std::vector<void*> v;
+    size_t size = 7;
+    for (size_t i = 0; i < SizeClass::NumMoveSize(size) + 1; ++i)
+    {
+        v.push_back(ConcurrentMalloc(size));
+    }
+
+    for (size_t i = 0; i < v.size(); ++i)
+    {
+        printf("[%d]->%p\n", i, v[i]);
+    }
+
+    for (auto ptr : v)
+    {
+        ConcurrentFree(ptr);
+    }
+
+    v.clear();
+}
+
+void func1(){
+    std::vector<void*> v;
+    size_t size = 7;
+    // for (size_t i = 0; i < SizeClass::NumMoveSize(size)+1; ++i)
+    for (size_t i = 0; i < 512; ++i){
+        v.push_back(ConcurrentMalloc(size));
+
+    }
+    v.push_back(ConcurrentMalloc(size));
+
+    for (size_t i = 0; i < v.size(); ++i){
+       // printf("[%d]->%p\n", i, v[i]);
+    }
+
+    for (auto ptr : v){
+        ConcurrentFree(ptr);
+    }
+
+    v.clear();
+}
+
+
 int main(){
     // UniThreadCache();
     // UnitTestSizeClass();
-    UnitTestSystemAlloc();
+    // UnitTestSystemAlloc();
+    //  UnitThreadCache2();
 
-//    void* ptr1 = ConcurrentMalloc(1<<PAGE_SHIFT);
+//     void* ptr1 = ConcurrentMalloc(1 << PAGE_SHIFT);
 //    void* ptr2 = ConcurrentMalloc(65 << PAGE_SHIFT);
 //    void* ptr3 = ConcurrentMalloc(129 << PAGE_SHIFT);
-//
-//    ConcurrentFree(ptr1);
+
+//     ConcurrentFree(ptr1);
 //    ConcurrentFree(ptr2);
 //    ConcurrentFree(ptr3);
+    func1();
 
     return 0;
 }

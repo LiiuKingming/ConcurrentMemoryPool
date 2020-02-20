@@ -1,5 +1,5 @@
 //
-// Created by 28943 on 2020/2/20.
+// Created by 28943 on 2020/1/9.
 //
 
 #include "ThreadCache.h"
@@ -12,7 +12,7 @@ void* ThreadCache::Allocte(size_t size){
     if(!freeList.Empty()){
         return freeList.Pop();
     } else {
-        return FetchFromCentralCache(SizeClass::RoundUp(index));
+        return FetchFromCentralCache(SizeClass::RoundUp(size));
     }
 }
 
@@ -22,27 +22,29 @@ void ThreadCache::Deallocte(void* ptr, size_t size){
 
     freeList.Push(ptr);
 
-    // é‡Šæ”¾å¯¹è±¡æ—¶ï¼Œè‹¥é“¾è¡¨è¿‡é•¿ï¼Œå›æ”¶å†…å­˜å›åˆ°ä¸­å¿ƒå †
-    // å¯¹è±¡ä¸ªæ•°æ»¡è¶³ä¸€å®šæ¡ä»¶ æˆ– å†…å­˜å¤§å°è¶…å‡ºä¸€å®šå€¼
+    // ÊÍ·Å¶ÔÏóÊ±£¬ÈôÁ´±í¹ı³¤£¬»ØÊÕÄÚ´æ»Øµ½ÖĞĞÄ¶Ñ
+    // ¶ÔÏó¸öÊıÂú×ãÒ»¶¨Ìõ¼ş »ò ÄÚ´æ´óĞ¡³¬³öÒ»¶¨Öµ
     size_t num = SizeClass::NumMoveSize(size);
     if (freeList.Num() >= num){
-        ListTooLong(freeList, num);
+        ListTooLong(freeList, num, size);
     }
 }
 
-void ThreadCache::ListTooLong(FreeList &freeList, size_t num) {
+void ThreadCache::ListTooLong(FreeList &freeList, size_t num, size_t size) {
     void* start = nullptr, *end = nullptr;
     freeList.PopRange(start, end, num);
 
     NextObj(end) = nullptr;
-    centralCacheInst.ReleaseListToSpans(start);
+    // centralCacheInst.ReleaseListToSpans(start, size);
+    CentralCache::GetInstance().ReleaseListToSpans(start, size);
 }
 
 void* ThreadCache::FetchFromCentralCache(size_t size) {
     size_t num = SizeClass::NumMoveSize(size);
 
     void* start = nullptr, *end = nullptr;
-    size_t actualNum = centralCacheInst.FetchRangeObj(start, end, num, size);
+    //size_t actualNum = centralCacheInst.FetchRangeObj(start, end, num, size);
+    size_t actualNum = CentralCache::GetInstance().FetchRangeObj(start, end, num, size);
 
     if (actualNum == 1){
         return start;
@@ -57,11 +59,11 @@ void* ThreadCache::FetchFromCentralCache(size_t size) {
 
 
 /*
-// å•å…ƒæµ‹è¯•ä»£ç  èˆå¼ƒ
+// µ¥Ôª²âÊÔ´úÂë ÉáÆú
 void* ThreadCache::FetchFromCentralCache(size_t index){
     size_t num = 20; // test number
 
-    //æ¨¡æ‹Ÿå–å†…å­˜å¯¹è±¡çš„ä»£ç , æµ‹è¯•Tread Catcheçš„é€»è¾‘æ­£ç¡®æ€§
+    //Ä£ÄâÈ¡ÄÚ´æ¶ÔÏóµÄ´úÂë, ²âÊÔTread CatcheµÄÂß¼­ÕıÈ·ĞÔ
     size_t size = (index + 1) * 8;
     char* start = (char*)malloc(size * num);
     char* cur = start;
